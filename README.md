@@ -1,5 +1,7 @@
 # claude-code-costs
 
+![Claude Code Costs Analyzer](banner.png)
+
 Analyze your Claude Code conversation costs with interactive visualizations.
 
 ## Installation
