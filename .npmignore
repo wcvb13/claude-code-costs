@@ -1,0 +1,8 @@
+# Ignore the generated HTML report
+claude-costs-report.html
+
+# Development files
+.git
+.gitignore
+*.log
+node_modules/
