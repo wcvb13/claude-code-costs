@@ -6,6 +6,118 @@ const readline = require('readline');
 const os = require('os');
 const { exec } = require('child_process');
 
+// Claude API Pricing (per million tokens)
+const CLAUDE_PRICING = {
+  // Claude Opus 4
+  'claude-opus-4-20250514': {
+    input: 15.00,
+    output: 75.00,
+    cache_write: 18.75,
+    cache_read: 1.50
+  },
+  // Claude Sonnet 4
+  'claude-sonnet-4-20250514': {
+    input: 3.00,
+    output: 15.00,
+    cache_write: 3.75,
+    cache_read: 0.30
+  },
+  // Claude Sonnet 3.7
+  'claude-3-7-sonnet-20250219': {
+    input: 3.00,
+    output: 15.00,
+    cache_write: 3.75,
+    cache_read: 0.30
+  },
+  'claude-3-7-sonnet-latest': {
+    input: 3.00,
+    output: 15.00,
+    cache_write: 3.75,
+    cache_read: 0.30
+  },
+  // Claude Sonnet 3.5
+  'claude-3-5-sonnet-20241022': {
+    input: 3.00,
+    output: 15.00,
+    cache_write: 3.75,
+    cache_read: 0.30
+  },
+  'claude-3-5-sonnet-20240620': {
+    input: 3.00,
+    output: 15.00,
+    cache_write: 3.75,
+    cache_read: 0.30
+  },
+  'claude-3-5-sonnet-latest': {
+    input: 3.00,
+    output: 15.00,
+    cache_write: 3.75,
+    cache_read: 0.30
+  },
+  // Claude Haiku 3.5
+  'claude-3-5-haiku-20241022': {
+    input: 0.80,
+    output: 4.00,
+    cache_write: 1.00,
+    cache_read: 0.08
+  },
+  'claude-3-5-haiku-latest': {
+    input: 0.80,
+    output: 4.00,
+    cache_write: 1.00,
+    cache_read: 0.08
+  },
+  // Claude Opus 3
+  'claude-3-opus-20240229': {
+    input: 15.00,
+    output: 75.00,
+    cache_write: 18.75,
+    cache_read: 1.50
+  },
+  'claude-3-opus-latest': {
+    input: 15.00,
+    output: 75.00,
+    cache_write: 18.75,
+    cache_read: 1.50
+  },
+  // Claude Sonnet 3
+  'claude-3-sonnet-20240229': {
+    input: 3.00,
+    output: 15.00,
+    cache_write: 3.75,
+    cache_read: 0.30
+  },
+  // Claude Haiku 3
+  'claude-3-haiku-20240307': {
+    input: 0.25,
+    output: 1.25,
+    cache_write: 0.30,
+    cache_read: 0.03
+  },
+  // Default pricing (use Sonnet 3.5 as default)
+  'default': {
+    input: 3.00,
+    output: 15.00,
+    cache_write: 3.75,
+    cache_read: 0.30
+  }
+};
+
+function calculateCost(usage, model) {
+  if (!usage) return 0;
+  
+  // Get pricing for the model, fallback to default
+  const pricing = CLAUDE_PRICING[model] || CLAUDE_PRICING['default'];
+  
+  // Calculate costs for each token type (price per million tokens)
+  const inputCost = (usage.input_tokens || 0) * pricing.input / 1000000;
+  const outputCost = (usage.output_tokens || 0) * pricing.output / 1000000;
+  const cacheWriteCost = (usage.cache_creation_input_tokens || 0) * pricing.cache_write / 1000000;
+  const cacheReadCost = (usage.cache_read_input_tokens || 0) * pricing.cache_read / 1000000;
+  
+  return inputCost + outputCost + cacheWriteCost + cacheReadCost;
+}
+
 async function parseJSONLFile(filePath) {
   const fileStream = fs.createReadStream(filePath);
   const rl = readline.createInterface({
@@ -47,10 +159,15 @@ async function parseJSONLFile(filePath) {
         firstUserMessage = message.text.substring(0, 100);
       }
       
-      // Extract cost data
-      if (message.type === 'assistant' && message.costUSD) {
-        totalCost += message.costUSD;
-        messageCount++;
+      // Extract cost data from assistant messages
+      if (message.type === 'assistant' && message.message) {
+        const usage = message.message.usage;
+        const model = message.message.model;
+        if (usage && model) {
+          const cost = calculateCost(usage, model);
+          totalCost += cost;
+          messageCount++;
+        }
       }
       
       // Track conversation time range - FIXED: use timestamp field
