@@ -1,6 +1,6 @@
 {
   "name": "claude-code-costs",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Analyze Claude Code conversation costs with interactive visualizations",
   "main": "index.js",
   "bin": {
