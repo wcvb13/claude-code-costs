@@ -1,121 +1,119 @@
 #!/usr/bin/env node
 
-const fs = require("fs");
-const path = require("path");
-const readline = require("readline");
-const os = require("os");
-const { exec } = require("child_process");
+const fs = require('fs');
+const path = require('path');
+const readline = require('readline');
+const os = require('os');
+const { exec } = require('child_process');
 
 // Claude API Pricing (per million tokens)
 const CLAUDE_PRICING = {
   // Claude Opus 4
-  "claude-opus-4-20250514": {
+  'claude-opus-4-20250514': {
     input: 15.0,
     output: 75.0,
     cache_write: 18.75,
-    cache_read: 1.5,
+    cache_read: 1.5
   },
   // Claude Sonnet 4
-  "claude-sonnet-4-20250514": {
+  'claude-sonnet-4-20250514': {
     input: 3.0,
     output: 15.0,
     cache_write: 3.75,
-    cache_read: 0.3,
+    cache_read: 0.3
   },
   // Claude Sonnet 3.7
-  "claude-3-7-sonnet-20250219": {
+  'claude-3-7-sonnet-20250219': {
     input: 3.0,
     output: 15.0,
     cache_write: 3.75,
-    cache_read: 0.3,
+    cache_read: 0.3
   },
-  "claude-3-7-sonnet-latest": {
+  'claude-3-7-sonnet-latest': {
     input: 3.0,
     output: 15.0,
     cache_write: 3.75,
-    cache_read: 0.3,
+    cache_read: 0.3
   },
   // Claude Sonnet 3.5
-  "claude-3-5-sonnet-20241022": {
+  'claude-3-5-sonnet-20241022': {
     input: 3.0,
     output: 15.0,
     cache_write: 3.75,
-    cache_read: 0.3,
+    cache_read: 0.3
   },
-  "claude-3-5-sonnet-20240620": {
+  'claude-3-5-sonnet-20240620': {
     input: 3.0,
     output: 15.0,
     cache_write: 3.75,
-    cache_read: 0.3,
+    cache_read: 0.3
   },
-  "claude-3-5-sonnet-latest": {
+  'claude-3-5-sonnet-latest': {
     input: 3.0,
     output: 15.0,
     cache_write: 3.75,
-    cache_read: 0.3,
+    cache_read: 0.3
   },
   // Claude Haiku 3.5
-  "claude-3-5-haiku-20241022": {
+  'claude-3-5-haiku-20241022': {
     input: 0.8,
     output: 4.0,
     cache_write: 1.0,
-    cache_read: 0.08,
+    cache_read: 0.08
   },
-  "claude-3-5-haiku-latest": {
+  'claude-3-5-haiku-latest': {
     input: 0.8,
     output: 4.0,
     cache_write: 1.0,
-    cache_read: 0.08,
+    cache_read: 0.08
   },
   // Claude Opus 3
-  "claude-3-opus-20240229": {
+  'claude-3-opus-20240229': {
     input: 15.0,
     output: 75.0,
     cache_write: 18.75,
-    cache_read: 1.5,
+    cache_read: 1.5
   },
-  "claude-3-opus-latest": {
+  'claude-3-opus-latest': {
     input: 15.0,
     output: 75.0,
     cache_write: 18.75,
-    cache_read: 1.5,
+    cache_read: 1.5
   },
   // Claude Sonnet 3
-  "claude-3-sonnet-20240229": {
+  'claude-3-sonnet-20240229': {
     input: 3.0,
     output: 15.0,
     cache_write: 3.75,
-    cache_read: 0.3,
+    cache_read: 0.3
   },
   // Claude Haiku 3
-  "claude-3-haiku-20240307": {
+  'claude-3-haiku-20240307': {
     input: 0.25,
     output: 1.25,
     cache_write: 0.3,
-    cache_read: 0.03,
+    cache_read: 0.03
   },
   // Default pricing (use Sonnet 3.5 as default)
   default: {
     input: 3.0,
     output: 15.0,
     cache_write: 3.75,
-    cache_read: 0.3,
-  },
+    cache_read: 0.3
+  }
 };
 
 function calculateCost(usage, model) {
   if (!usage) return 0;
 
   // Get pricing for the model, fallback to default
-  const pricing = CLAUDE_PRICING[model] || CLAUDE_PRICING["default"];
+  const pricing = CLAUDE_PRICING[model] || CLAUDE_PRICING['default'];
 
   // Calculate costs for each token type (price per million tokens)
   const inputCost = ((usage.input_tokens || 0) * pricing.input) / 1000000;
   const outputCost = ((usage.output_tokens || 0) * pricing.output) / 1000000;
-  const cacheWriteCost =
-    ((usage.cache_creation_input_tokens || 0) * pricing.cache_write) / 1000000;
-  const cacheReadCost =
-    ((usage.cache_read_input_tokens || 0) * pricing.cache_read) / 1000000;
+  const cacheWriteCost = ((usage.cache_creation_input_tokens || 0) * pricing.cache_write) / 1000000;
+  const cacheReadCost = ((usage.cache_read_input_tokens || 0) * pricing.cache_read) / 1000000;
 
   return inputCost + outputCost + cacheWriteCost + cacheReadCost;
 }
@@ -124,32 +122,29 @@ async function parseJSONLFile(filePath) {
   const fileStream = fs.createReadStream(filePath);
   const rl = readline.createInterface({
     input: fileStream,
-    crlfDelay: Infinity,
+    crlfDelay: Infinity
   });
 
   let totalCost = 0;
   let messageCount = 0;
-  let conversationName = "";
-  let conversationTitle = "";
+  let conversationName = '';
+  let conversationTitle = '';
   let startTime = null;
   let endTime = null;
-  let summary = "";
-  let firstUserMessage = "";
+  let summary = '';
+  let firstUserMessage = '';
 
   for await (const line of rl) {
     try {
       const message = JSON.parse(line);
 
       // Extract conversation metadata
-      if (message.type === "summary") {
+      if (message.type === 'summary') {
         if (message.summary) {
           summary = message.summary;
         }
         if (message.metadata) {
-          conversationName =
-            message.metadata.workingDirectory ||
-            message.metadata.cwd ||
-            "Unknown";
+          conversationName = message.metadata.workingDirectory || message.metadata.cwd || 'Unknown';
           if (message.metadata.thread_summary) {
             conversationTitle = message.metadata.thread_summary;
           }
@@ -160,12 +155,12 @@ async function parseJSONLFile(filePath) {
       }
 
       // Capture first user message as fallback title
-      if (message.type === "user" && !firstUserMessage && message.text) {
+      if (message.type === 'user' && !firstUserMessage && message.text) {
         firstUserMessage = message.text.substring(0, 100);
       }
 
       // Extract cost data from assistant messages
-      if (message.type === "assistant" && message.message) {
+      if (message.type === 'assistant' && message.message) {
         const usage = message.message.usage;
         const model = message.message.model;
         if (usage && model) {
@@ -188,26 +183,26 @@ async function parseJSONLFile(filePath) {
 
   // Determine best title
   if (!conversationTitle) {
-    conversationTitle = summary || firstUserMessage || "Untitled conversation";
+    conversationTitle = summary || firstUserMessage || 'Untitled conversation';
   }
 
   return {
-    conversationId: path.basename(filePath, ".jsonl"),
+    conversationId: path.basename(filePath, '.jsonl'),
     conversationName,
-    conversationTitle: conversationTitle.replace(/\n/g, " ").substring(0, 100),
+    conversationTitle: conversationTitle.replace(/\n/g, ' ').substring(0, 100),
     totalCost,
     messageCount,
     startTime,
     endTime,
-    duration: endTime && startTime ? (endTime - startTime) / 1000 / 60 : 0, // in minutes
+    duration: endTime && startTime ? (endTime - startTime) / 1000 / 60 : 0 // in minutes
   };
 }
 
 async function analyzeAllConversations() {
-  const claudeProjectsDir = path.join(process.env.HOME, ".claude", "projects");
+  const claudeProjectsDir = path.join(process.env.HOME, '.claude', 'projects');
 
   if (!fs.existsSync(claudeProjectsDir)) {
-    console.error("Claude projects directory not found:", claudeProjectsDir);
+    console.error('Claude projects directory not found:', claudeProjectsDir);
     return [];
   }
 
@@ -216,31 +211,22 @@ async function analyzeAllConversations() {
   // Get all project directories
   const projectDirs = fs
     .readdirSync(claudeProjectsDir)
-    .filter((dir) =>
-      fs.statSync(path.join(claudeProjectsDir, dir)).isDirectory()
-    );
+    .filter(dir => fs.statSync(path.join(claudeProjectsDir, dir)).isDirectory());
 
   let processedCount = 0;
   const totalFiles = projectDirs.reduce((acc, dir) => {
     const projectPath = path.join(claudeProjectsDir, dir);
-    return (
-      acc +
-      fs.readdirSync(projectPath).filter((f) => f.endsWith(".jsonl")).length
-    );
+    return acc + fs.readdirSync(projectPath).filter(f => f.endsWith('.jsonl')).length;
   }, 0);
 
   for (const projectDir of projectDirs) {
     const projectPath = path.join(claudeProjectsDir, projectDir);
-    const jsonlFiles = fs
-      .readdirSync(projectPath)
-      .filter((file) => file.endsWith(".jsonl"));
+    const jsonlFiles = fs.readdirSync(projectPath).filter(file => file.endsWith('.jsonl'));
 
     for (const jsonlFile of jsonlFiles) {
       const filePath = path.join(projectPath, jsonlFile);
       processedCount++;
-      process.stdout.write(
-        `\rProcessing: ${processedCount}/${totalFiles} files...`
-      );
+      process.stdout.write(`\rProcessing: ${processedCount}/${totalFiles} files...`);
 
       try {
         const conversation = await parseJSONLFile(filePath);
@@ -252,22 +238,22 @@ async function analyzeAllConversations() {
     }
   }
 
-  console.log("\n"); // New line after progress
+  console.log('\n'); // New line after progress
   return conversations;
 }
 
 function aggregateDailyCosts(conversations) {
   const dailyCosts = {};
 
-  conversations.forEach((conv) => {
+  conversations.forEach(conv => {
     if (conv.totalCost > 0 && conv.startTime) {
-      const dateKey = conv.startTime.toISOString().split("T")[0];
+      const dateKey = conv.startTime.toISOString().split('T')[0];
       if (!dailyCosts[dateKey]) {
         dailyCosts[dateKey] = {
           date: dateKey,
           totalCost: 0,
           conversationCount: 0,
-          conversations: [],
+          conversations: []
         };
       }
       dailyCosts[dateKey].totalCost += conv.totalCost;
@@ -287,7 +273,7 @@ function getLast30Days() {
   for (let i = 29; i >= 0; i--) {
     const date = new Date(today);
     date.setDate(date.getDate() - i);
-    days.push(date.toISOString().split("T")[0]);
+    days.push(date.toISOString().split('T')[0]);
   }
 
   return days;
@@ -295,18 +281,13 @@ function getLast30Days() {
 
 function createHTMLReport(conversations) {
   const conversationsWithCosts = conversations
-    .filter((c) => c.totalCost > 0)
+    .filter(c => c.totalCost > 0)
     .sort((a, b) => b.totalCost - a.totalCost);
 
-  const totalCost = conversationsWithCosts.reduce(
-    (sum, c) => sum + c.totalCost,
-    0
-  );
+  const totalCost = conversationsWithCosts.reduce((sum, c) => sum + c.totalCost, 0);
 
   // Get unique projects for filter
-  const uniqueProjects = [
-    ...new Set(conversationsWithCosts.map((c) => c.projectName)),
-  ];
+  const uniqueProjects = [...new Set(conversationsWithCosts.map(c => c.projectName))];
 
   // Get daily data
   const dailyData = aggregateDailyCosts(conversations);
@@ -314,26 +295,25 @@ function createHTMLReport(conversations) {
 
   // Fill in missing days with zero cost
   const dailyCostMap = {};
-  dailyData.forEach((d) => {
+  dailyData.forEach(d => {
     dailyCostMap[d.date] = {
       cost: d.totalCost,
-      conversations: d.conversations,
+      conversations: d.conversations
     };
   });
 
-  const last30DaysData = last30Days.map((date) => ({
+  const last30DaysData = last30Days.map(date => ({
     date,
     cost: dailyCostMap[date]?.cost || 0,
-    conversations: dailyCostMap[date]?.conversations || [],
+    conversations: dailyCostMap[date]?.conversations || []
   }));
 
   // Prepare data for top conversations chart
-  const chartData = conversationsWithCosts.slice(0, 20).map((c) => ({
-    label:
-      c.conversationTitle || c.conversationName.split("/").pop() || "Unknown",
+  const chartData = conversationsWithCosts.slice(0, 20).map(c => ({
+    label: c.conversationTitle || c.conversationName.split('/').pop() || 'Unknown',
     cost: c.totalCost,
-    date: c.startTime ? c.startTime.toLocaleDateString() : "Unknown",
-    projectName: c.projectName,
+    date: c.startTime ? c.startTime.toLocaleDateString() : 'Unknown',
+    projectName: c.projectName
   }));
 
   const html = `<!DOCTYPE html>
@@ -453,15 +433,13 @@ function createHTMLReport(conversations) {
             </div>
             <div class="summary-item">
                 <div>Total Conversations</div>
-                <div class="summary-value">${
-                  conversationsWithCosts.length
-                }</div>
+                <div class="summary-value">${conversationsWithCosts.length}</div>
             </div>
             <div class="summary-item">
                 <div>Average Cost</div>
-                <div class="summary-value">$${(
-                  totalCost / conversationsWithCosts.length
-                ).toFixed(4)}</div>
+                <div class="summary-value">$${(totalCost / conversationsWithCosts.length).toFixed(
+                  4
+                )}</div>
             </div>
         </div>
 
@@ -470,14 +448,8 @@ function createHTMLReport(conversations) {
             <select id="projectFilter">
                 <option value="all">All Projects</option>
                 ${uniqueProjects
-                  .map(
-                    (p) =>
-                      `<option value="${p}">${p.replace(
-                        /-Users-philipp-dev-/,
-                        ""
-                      )}</option>`
-                  )
-                  .join("")}
+                  .map(p => `<option value="${p}">${p.replace(/-Users-philipp-dev-/, '')}</option>`)
+                  .join('')}
             </select>
         </div>
 
@@ -506,27 +478,20 @@ function createHTMLReport(conversations) {
                 ${conversationsWithCosts
                   .slice(0, 20)
                   .map(
-                    (conv) => `
+                    conv => `
                     <tr data-project="${conv.projectName}">
                         <td class="conversation-title" title="${
                           conv.conversationTitle
                         }">${conv.conversationTitle}</td>
-                        <td>${
-                          conv.conversationName.split("/").pop() ||
-                          conv.projectName
-                        }</td>
+                        <td>${conv.conversationName.split('/').pop() || conv.projectName}</td>
                         <td class="cost">$${conv.totalCost.toFixed(6)}</td>
                         <td>${conv.messageCount}</td>
                         <td>${conv.duration.toFixed(1)} min</td>
-                        <td>${
-                          conv.startTime
-                            ? conv.startTime.toLocaleDateString()
-                            : "Unknown"
-                        }</td>
+                        <td>${conv.startTime ? conv.startTime.toLocaleDateString() : 'Unknown'}</td>
                     </tr>
                 `
                   )
-                  .join("")}
+                  .join('')}
             </tbody>
         </table>
     </div>
@@ -541,10 +506,10 @@ function createHTMLReport(conversations) {
         const dailyChart = new Chart(dailyCtx, {
             type: 'line',
             data: {
-                labels: ${JSON.stringify(last30DaysData.map((d) => d.date))},
+                labels: ${JSON.stringify(last30DaysData.map(d => d.date))},
                 datasets: [{
                     label: 'Daily Cost (USD)',
-                    data: ${JSON.stringify(last30DaysData.map((d) => d.cost))},
+                    data: ${JSON.stringify(last30DaysData.map(d => d.cost))},
                     backgroundColor: 'rgba(54, 162, 235, 0.2)',
                     borderColor: 'rgba(54, 162, 235, 1)',
                     borderWidth: 2,
@@ -608,15 +573,11 @@ function createHTMLReport(conversations) {
             type: 'bar',
             data: {
                 labels: ${JSON.stringify(
-                  chartData.map(
-                    (c) =>
-                      c.label.substring(0, 50) +
-                      (c.label.length > 50 ? "..." : "")
-                  )
+                  chartData.map(c => c.label.substring(0, 50) + (c.label.length > 50 ? '...' : ''))
                 )},
                 datasets: [{
                     label: 'Cost (USD)',
-                    data: ${JSON.stringify(chartData.map((c) => c.cost))},
+                    data: ${JSON.stringify(chartData.map(c => c.cost))},
                     backgroundColor: 'rgba(54, 162, 235, 0.8)',
                     borderColor: 'rgba(54, 162, 235, 1)',
                     borderWidth: 1
@@ -713,82 +674,66 @@ function createHTMLReport(conversations) {
 </body>
 </html>`;
 
-  const outputPath = path.join(
-    os.tmpdir(),
-    `claude-costs-report-${Date.now()}.html`
-  );
+  const outputPath = path.join(os.tmpdir(), `claude-costs-report-${Date.now()}.html`);
   fs.writeFileSync(outputPath, html);
   console.log(`\nHTML report generated: ${outputPath}`);
   return outputPath;
 }
 
 function displaySummary(conversations) {
-  const conversationsWithCosts = conversations.filter((c) => c.totalCost > 0);
-  const totalCost = conversationsWithCosts.reduce(
-    (sum, c) => sum + c.totalCost,
-    0
-  );
+  const conversationsWithCosts = conversations.filter(c => c.totalCost > 0);
+  const totalCost = conversationsWithCosts.reduce((sum, c) => sum + c.totalCost, 0);
 
-  console.log("\n=== Claude Conversation Cost Summary ===\n");
+  console.log('\n=== Claude Conversation Cost Summary ===\n');
   console.log(`Total Cost: $${totalCost.toFixed(4)}`);
   console.log(`Total Conversations: ${conversationsWithCosts.length}`);
   console.log(
-    `Average Cost per Conversation: $${(
-      totalCost / conversationsWithCosts.length
-    ).toFixed(4)}`
+    `Average Cost per Conversation: $${(totalCost / conversationsWithCosts.length).toFixed(4)}`
   );
 
   // Show top 5 with titles
-  console.log("\nTop 5 Most Expensive Conversations:");
+  console.log('\nTop 5 Most Expensive Conversations:');
   conversationsWithCosts
     .sort((a, b) => b.totalCost - a.totalCost)
     .slice(0, 5)
     .forEach((conv, i) => {
       console.log(`${i + 1}. ${conv.conversationTitle}`);
-      console.log(
-        `   Project: ${
-          conv.conversationName.split("/").pop() || conv.projectName
-        }`
-      );
+      console.log(`   Project: ${conv.conversationName.split('/').pop() || conv.projectName}`);
       console.log(`   Cost: $${conv.totalCost.toFixed(6)}`);
-      console.log(
-        `   Date: ${
-          conv.startTime ? conv.startTime.toLocaleDateString() : "Unknown"
-        }`
-      );
+      console.log(`   Date: ${conv.startTime ? conv.startTime.toLocaleDateString() : 'Unknown'}`);
     });
 }
 
 // Main execution
 async function main() {
-  console.log("Analyzing Claude conversation costs...\n");
+  console.log('Analyzing Claude conversation costs...\n');
 
   const conversations = await analyzeAllConversations();
 
   if (conversations.length === 0) {
-    console.log("No conversations found.");
+    console.log('No conversations found.');
     return;
   }
 
   displaySummary(conversations);
   const reportPath = createHTMLReport(conversations);
 
-  console.log("\nOpening report in browser...");
+  console.log('\nOpening report in browser...');
 
   // Open the HTML file in the default browser
   const platform = process.platform;
   let cmd;
-  if (platform === "darwin") {
+  if (platform === 'darwin') {
     cmd = `open "${reportPath}"`;
-  } else if (platform === "win32") {
+  } else if (platform === 'win32') {
     cmd = `start "" "${reportPath}"`;
   } else {
     cmd = `xdg-open "${reportPath}"`;
   }
 
-  exec(cmd, (err) => {
+  exec(cmd, err => {
     if (err) {
-      console.error("Failed to open browser automatically.");
+      console.error('Failed to open browser automatically.');
       console.log(`Please open the following file manually: ${reportPath}`);
     }
   });
