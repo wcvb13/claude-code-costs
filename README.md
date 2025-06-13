@@ -32,6 +32,7 @@ The report is automatically generated in your system's temp directory and opened
 ## Output
 
 The tool provides:
+
 1. Console summary of costs and top expensive conversations
 2. Interactive HTML report with:
    - Total cost summary
