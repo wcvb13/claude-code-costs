@@ -6,6 +6,118 @@ const readline = require('readline');
 const os = require('os');
 const { exec } = require('child_process');
 
+// Claude API Pricing (per million tokens)
+const CLAUDE_PRICING = {
+  // Claude Opus 4
+  'claude-opus-4-20250514': {
+    input: 15.0,
+    output: 75.0,
+    cache_write: 18.75,
+    cache_read: 1.5
+  },
+  // Claude Sonnet 4
+  'claude-sonnet-4-20250514': {
+    input: 3.0,
+    output: 15.0,
+    cache_write: 3.75,
+    cache_read: 0.3
+  },
+  // Claude Sonnet 3.7
+  'claude-3-7-sonnet-20250219': {
+    input: 3.0,
+    output: 15.0,
+    cache_write: 3.75,
+    cache_read: 0.3
+  },
+  'claude-3-7-sonnet-latest': {
+    input: 3.0,
+    output: 15.0,
+    cache_write: 3.75,
+    cache_read: 0.3
+  },
+  // Claude Sonnet 3.5
+  'claude-3-5-sonnet-20241022': {
+    input: 3.0,
+    output: 15.0,
+    cache_write: 3.75,
+    cache_read: 0.3
+  },
+  'claude-3-5-sonnet-20240620': {
+    input: 3.0,
+    output: 15.0,
+    cache_write: 3.75,
+    cache_read: 0.3
+  },
+  'claude-3-5-sonnet-latest': {
+    input: 3.0,
+    output: 15.0,
+    cache_write: 3.75,
+    cache_read: 0.3
+  },
+  // Claude Haiku 3.5
+  'claude-3-5-haiku-20241022': {
+    input: 0.8,
+    output: 4.0,
+    cache_write: 1.0,
+    cache_read: 0.08
+  },
+  'claude-3-5-haiku-latest': {
+    input: 0.8,
+    output: 4.0,
+    cache_write: 1.0,
+    cache_read: 0.08
+  },
+  // Claude Opus 3
+  'claude-3-opus-20240229': {
+    input: 15.0,
+    output: 75.0,
+    cache_write: 18.75,
+    cache_read: 1.5
+  },
+  'claude-3-opus-latest': {
+    input: 15.0,
+    output: 75.0,
+    cache_write: 18.75,
+    cache_read: 1.5
+  },
+  // Claude Sonnet 3
+  'claude-3-sonnet-20240229': {
+    input: 3.0,
+    output: 15.0,
+    cache_write: 3.75,
+    cache_read: 0.3
+  },
+  // Claude Haiku 3
+  'claude-3-haiku-20240307': {
+    input: 0.25,
+    output: 1.25,
+    cache_write: 0.3,
+    cache_read: 0.03
+  },
+  // Default pricing (use Sonnet 3.5 as default)
+  default: {
+    input: 3.0,
+    output: 15.0,
+    cache_write: 3.75,
+    cache_read: 0.3
+  }
+};
+
+function calculateCost(usage, model) {
+  if (!usage) return 0;
+
+  // Get pricing for the model, fallback to default
+  const pricing = CLAUDE_PRICING[model] || CLAUDE_PRICING['default'];
+
+  // Calculate costs for each token type (price per million tokens)
+  const inputCost = ((usage.input_tokens || 0) * pricing.input) / 1000000;
+  const outputCost = ((usage.output_tokens || 0) * pricing.output) / 1000000;
+  const cacheWriteCost = ((usage.cache_creation_input_tokens || 0) * pricing.cache_write) / 1000000;
+  const cacheReadCost = ((usage.cache_read_input_tokens || 0) * pricing.cache_read) / 1000000;
+
+  return inputCost + outputCost + cacheWriteCost + cacheReadCost;
+}
+
 async function parseJSONLFile(filePath) {
   const fileStream = fs.createReadStream(filePath);
   const rl = readline.createInterface({
@@ -25,7 +137,7 @@ async function parseJSONLFile(filePath) {
   for await (const line of rl) {
     try {
       const message = JSON.parse(line);
-      
+
       // Extract conversation metadata
       if (message.type === 'summary') {
         if (message.summary) {
@@ -41,18 +153,23 @@ async function parseJSONLFile(filePath) {
           }
         }
       }
-      
+
       // Capture first user message as fallback title
       if (message.type === 'user' && !firstUserMessage && message.text) {
         firstUserMessage = message.text.substring(0, 100);
       }
-      
-      // Extract cost data
-      if (message.type === 'assistant' && message.costUSD) {
-        totalCost += message.costUSD;
-        messageCount++;
+
+      // Extract cost data from assistant messages
+      if (message.type === 'assistant' && message.message) {
+        const usage = message.message.usage;
+        const model = message.message.model;
+        if (usage && model) {
+          const cost = calculateCost(usage, model);
+          totalCost += cost;
+          messageCount++;
+        }
       }
-      
+
       // Track conversation time range - FIXED: use timestamp field
       if (message.timestamp) {
         const timestamp = new Date(message.timestamp);
@@ -83,16 +200,17 @@ async function parseJSONLFile(filePath) {
 
 async function analyzeAllConversations() {
   const claudeProjectsDir = path.join(process.env.HOME, '.claude', 'projects');
-  
+
   if (!fs.existsSync(claudeProjectsDir)) {
     console.error('Claude projects directory not found:', claudeProjectsDir);
     return [];
   }
 
   const conversations = [];
-  
+
   // Get all project directories
-  const projectDirs = fs.readdirSync(claudeProjectsDir)
+  const projectDirs = fs
+    .readdirSync(claudeProjectsDir)
     .filter(dir => fs.statSync(path.join(claudeProjectsDir, dir)).isDirectory());
 
   let processedCount = 0;
@@ -103,14 +221,13 @@ async function analyzeAllConversations() {
 
   for (const projectDir of projectDirs) {
     const projectPath = path.join(claudeProjectsDir, projectDir);
-    const jsonlFiles = fs.readdirSync(projectPath)
-      .filter(file => file.endsWith('.jsonl'));
+    const jsonlFiles = fs.readdirSync(projectPath).filter(file => file.endsWith('.jsonl'));
 
     for (const jsonlFile of jsonlFiles) {
       const filePath = path.join(projectPath, jsonlFile);
       processedCount++;
       process.stdout.write(`\rProcessing: ${processedCount}/${totalFiles} files...`);
-      
+
       try {
         const conversation = await parseJSONLFile(filePath);
         conversation.projectName = projectDir;
@@ -127,7 +244,7 @@ async function analyzeAllConversations() {
 
 function aggregateDailyCosts(conversations) {
   const dailyCosts = {};
-  
+
   conversations.forEach(conv => {
     if (conv.totalCost > 0 && conv.startTime) {
       const dateKey = conv.startTime.toISOString().split('T')[0];
@@ -144,7 +261,7 @@ function aggregateDailyCosts(conversations) {
       dailyCosts[dateKey].conversations.push(conv);
     }
   });
-  
+
   // Convert to array and sort by date
   return Object.values(dailyCosts).sort((a, b) => a.date.localeCompare(b.date));
 }
@@ -152,13 +269,13 @@ function aggregateDailyCosts(conversations) {
 function getLast30Days() {
   const days = [];
   const today = new Date();
-  
+
   for (let i = 29; i >= 0; i--) {
     const date = new Date(today);
     date.setDate(date.getDate() - i);
     days.push(date.toISOString().split('T')[0]);
   }
-  
+
   return days;
 }
 
@@ -168,14 +285,14 @@ function createHTMLReport(conversations) {
     .sort((a, b) => b.totalCost - a.totalCost);
 
   const totalCost = conversationsWithCosts.reduce((sum, c) => sum + c.totalCost, 0);
-  
+
   // Get unique projects for filter
   const uniqueProjects = [...new Set(conversationsWithCosts.map(c => c.projectName))];
-  
+
   // Get daily data
   const dailyData = aggregateDailyCosts(conversations);
   const last30Days = getLast30Days();
-  
+
   // Fill in missing days with zero cost
   const dailyCostMap = {};
   dailyData.forEach(d => {
@@ -184,7 +301,7 @@ function createHTMLReport(conversations) {
       conversations: d.conversations
     };
   });
-  
+
   const last30DaysData = last30Days.map(date => ({
     date,
     cost: dailyCostMap[date]?.cost || 0,
@@ -202,7 +319,7 @@ function createHTMLReport(conversations) {
   const html = `<!DOCTYPE html>
 <html>
 <head>
-    <title>Claude Conversation Cost Analysis</title>
+    <title>Claude Code Conversation Cost Analysis</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/index.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
@@ -320,7 +437,9 @@ function createHTMLReport(conversations) {
             </div>
             <div class="summary-item">
                 <div>Average Cost</div>
-                <div class="summary-value">$${(totalCost / conversationsWithCosts.length).toFixed(4)}</div>
+                <div class="summary-value">$${(totalCost / conversationsWithCosts.length).toFixed(
+                  4
+                )}</div>
             </div>
         </div>
 
@@ -328,7 +447,9 @@ function createHTMLReport(conversations) {
             <label for="projectFilter">Filter by Project:</label>
             <select id="projectFilter">
                 <option value="all">All Projects</option>
-                ${uniqueProjects.map(p => `<option value="${p}">${p.replace(/-Users-philipp-dev-/, '')}</option>`).join('')}
+                ${uniqueProjects
+                  .map(p => `<option value="${p}">${p.replace(/-Users-philipp-dev-/, '')}</option>`)
+                  .join('')}
             </select>
         </div>
 
@@ -354,16 +475,23 @@ function createHTMLReport(conversations) {
                 </tr>
             </thead>
             <tbody>
-                ${conversationsWithCosts.slice(0, 20).map(conv => `
+                ${conversationsWithCosts
+                  .slice(0, 20)
+                  .map(
+                    conv => `
                     <tr data-project="${conv.projectName}">
-                        <td class="conversation-title" title="${conv.conversationTitle}">${conv.conversationTitle}</td>
+                        <td class="conversation-title" title="${
+                          conv.conversationTitle
+                        }">${conv.conversationTitle}</td>
                         <td>${conv.conversationName.split('/').pop() || conv.projectName}</td>
                         <td class="cost">$${conv.totalCost.toFixed(6)}</td>
                         <td>${conv.messageCount}</td>
                         <td>${conv.duration.toFixed(1)} min</td>
                         <td>${conv.startTime ? conv.startTime.toLocaleDateString() : 'Unknown'}</td>
                     </tr>
-                `).join('')}
+                `
+                  )
+                  .join('')}
             </tbody>
         </table>
     </div>
@@ -444,7 +572,9 @@ function createHTMLReport(conversations) {
         const conversationChart = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: ${JSON.stringify(chartData.map(c => c.label.substring(0, 50) + (c.label.length > 50 ? '...' : '')))},
+                labels: ${JSON.stringify(
+                  chartData.map(c => c.label.substring(0, 50) + (c.label.length > 50 ? '...' : ''))
+                )},
                 datasets: [{
                     label: 'Cost (USD)',
                     data: ${JSON.stringify(chartData.map(c => c.cost))},
@@ -553,12 +683,14 @@ function createHTMLReport(conversations) {
 function displaySummary(conversations) {
   const conversationsWithCosts = conversations.filter(c => c.totalCost > 0);
   const totalCost = conversationsWithCosts.reduce((sum, c) => sum + c.totalCost, 0);
-  
+
   console.log('\n=== Claude Conversation Cost Summary ===\n');
   console.log(`Total Cost: $${totalCost.toFixed(4)}`);
   console.log(`Total Conversations: ${conversationsWithCosts.length}`);
-  console.log(`Average Cost per Conversation: $${(totalCost / conversationsWithCosts.length).toFixed(4)}`);
-  
+  console.log(
+    `Average Cost per Conversation: $${(totalCost / conversationsWithCosts.length).toFixed(4)}`
+  );
+
   // Show top 5 with titles
   console.log('\nTop 5 Most Expensive Conversations:');
   conversationsWithCosts
@@ -575,19 +707,19 @@ function displaySummary(conversations) {
 // Main execution
 async function main() {
   console.log('Analyzing Claude conversation costs...\n');
-  
+
   const conversations = await analyzeAllConversations();
-  
+
   if (conversations.length === 0) {
     console.log('No conversations found.');
     return;
   }
-  
+
   displaySummary(conversations);
   const reportPath = createHTMLReport(conversations);
-  
+
   console.log('\nOpening report in browser...');
-  
+
   // Open the HTML file in the default browser
   const platform = process.platform;
   let cmd;
@@ -598,8 +730,8 @@ async function main() {
   } else {
     cmd = `xdg-open "${reportPath}"`;
   }
-  
-  exec(cmd, (err) => {
+
+  exec(cmd, err => {
     if (err) {
       console.error('Failed to open browser automatically.');
       console.log(`Please open the following file manually: ${reportPath}`);
