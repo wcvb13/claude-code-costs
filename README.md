@@ -4,6 +4,8 @@
 
 Analyze your Claude Code conversation costs with interactive visualizations.
 
+💡 **Want to see how I use Claude Code?** [Here's my workflow](https://spiess.dev/blog/how-i-use-claude-code) and approach to getting things done with it.
+
 ## Installation
 
 You don't need to install anything! Just run:
