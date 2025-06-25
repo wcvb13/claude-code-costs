@@ -524,10 +524,35 @@ function createHTMLReport(conversations) {
         }
         .conversation-title {
             max-width: 400px;
+            color: hsl(var(--text-100));
+            position: relative;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .conversation-title.collapsed {
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            color: hsl(var(--text-100));
+        }
+        .conversation-title.expanded {
+            white-space: normal;
+            word-wrap: break-word;
+            max-width: none;
+            background-color: hsl(var(--bg-300));
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 2px 8px hsla(var(--text-000), 0.1);
+            z-index: 10;
+        }
+        .conversation-title:hover {
+            background-color: hsla(var(--accent-brand), 0.05);
+            border-radius: 0.25rem;
+        }
+        .expand-icon {
+            margin-left: 0.5rem;
+            color: hsl(var(--accent-brand));
+            font-size: 0.8rem;
+            opacity: 0.7;
         }
         .project-name {
             color: hsl(var(--accent-pro-100));
@@ -656,9 +681,10 @@ function createHTMLReport(conversations) {
                   .map(
                     conv => `
                     <tr data-project="${conv.projectName}">
-                        <td class="conversation-title privacy-sensitive" title="${
-                          conv.conversationTitle
-                        }">${conv.conversationTitle}</td>
+                        <td class="conversation-title privacy-sensitive collapsed" title="点击展开完整标题" onclick="toggleTitle(this)">
+                            <span class="title-content">${conv.conversationTitle}</span>
+                            <i class="expand-icon fas fa-expand-alt"></i>
+                        </td>
                         <td class="project-name privacy-sensitive">${(conv.conversationName.split('/').pop() || conv.projectName).replace(/-Users-haleclipse-WorkSpace-/, '')}</td>
                         <td class="cost">$${conv.totalCost.toFixed(6)}</td>
                         <td style="color: hsl(var(--text-200));">${conv.messageCount}</td>
@@ -767,11 +793,11 @@ function createHTMLReport(conversations) {
                         }
                     },
                     tooltip: {
-                        backgroundColor: 'hsla(var(--bg-300), 0.9)',
-                        titleColor: 'hsl(var(--text-100))',
-                        bodyColor: 'hsl(var(--text-200))',
-                        borderColor: 'hsl(var(--bg-400))',
-                        borderWidth: 1,
+                        backgroundColor: 'hsl(var(--bg-300))',
+                        titleColor: 'hsl(var(--text-000))',
+                        bodyColor: 'hsl(var(--text-100))',
+                        borderColor: 'hsl(var(--accent-brand))',
+                        borderWidth: 2,
                         callbacks: {
                             label: function(context) {
                                 const dayData = dailyDataByProject[context.dataIndex];
@@ -847,14 +873,30 @@ function createHTMLReport(conversations) {
                         }
                     },
                     tooltip: {
-                        backgroundColor: 'hsla(var(--bg-300), 0.9)',
-                        titleColor: 'hsl(var(--text-100))',
-                        bodyColor: 'hsl(var(--text-200))',
-                        borderColor: 'hsl(var(--bg-400))',
-                        borderWidth: 1,
+                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                        titleColor: '#000000',
+                        bodyColor: '#333333',
+                        borderColor: 'hsl(var(--accent-brand))',
+                        borderWidth: 2,
+                        padding: 12,
+                        cornerRadius: 8,
+                        displayColors: false,
+                        titleFont: {
+                            size: 14,
+                            weight: 'bold'
+                        },
+                        bodyFont: {
+                            size: 13,
+                            weight: 'normal'
+                        },
                         callbacks: {
+                            title: function(context) {
+                                // Show full conversation title
+                                const fullTitle = ${JSON.stringify(chartData.map(c => c.label))}[context[0].dataIndex];
+                                return fullTitle;
+                            },
                             label: function(context) {
-                                return '花费: $' + context.parsed.x.toFixed(6);
+                                return '花费: $' + context.parsed.x.toFixed(4);
                             }
                         }
                     }
@@ -1028,7 +1070,10 @@ function createHTMLReport(conversations) {
             const tbody = document.querySelector('#conversationTable tbody');
             tbody.innerHTML = topFiltered.map((conv, index) => \`
                 <tr data-project="\${conv.projectName}">
-                    <td class="conversation-title privacy-sensitive \${privacyMode ? 'privacy-blur' : ''}" title="\${conv.conversationTitle}">\${conv.conversationTitle}</td>
+                    <td class="conversation-title privacy-sensitive collapsed \${privacyMode ? 'privacy-blur' : ''}" title="点击展开完整标题" onclick="toggleTitle(this)">
+                        <span class="title-content">\${conv.conversationTitle}</span>
+                        <i class="expand-icon fas fa-expand-alt"></i>
+                    </td>
                     <td class="project-name privacy-sensitive \${privacyMode ? 'privacy-blur' : ''}">\${(conv.conversationName.split('/').pop() || conv.projectName).replace(/-Users-haleclipse-WorkSpace-/, '')}</td>
                     <td class="cost">$\${conv.totalCost.toFixed(6)}</td>
                     <td style="color: hsl(var(--text-200));">\${conv.messageCount}</td>
@@ -1036,6 +1081,42 @@ function createHTMLReport(conversations) {
                     <td style="color: hsl(var(--text-300)); font-family: 'Fira Code', monospace; font-size: 0.875rem;">\${conv.startTime ? conv.startTime.toLocaleDateString() : 'Unknown'}</td>
                 </tr>
             \`).join('');
+        });
+        
+        // Toggle title expansion function
+        function toggleTitle(element) {
+            const isCollapsed = element.classList.contains('collapsed');
+            const icon = element.querySelector('.expand-icon');
+            
+            if (isCollapsed) {
+                // Expand
+                element.classList.remove('collapsed');
+                element.classList.add('expanded');
+                icon.className = 'expand-icon fas fa-compress-alt';
+                element.title = '点击收起';
+            } else {
+                // Collapse
+                element.classList.remove('expanded');
+                element.classList.add('collapsed');
+                icon.className = 'expand-icon fas fa-expand-alt';
+                element.title = '点击展开完整标题';
+            }
+        }
+        
+        // Close expanded titles when clicking outside
+        document.addEventListener('click', function(event) {
+            if (!event.target.closest('.conversation-title')) {
+                const expandedTitles = document.querySelectorAll('.conversation-title.expanded');
+                expandedTitles.forEach(title => {
+                    title.classList.remove('expanded');
+                    title.classList.add('collapsed');
+                    const icon = title.querySelector('.expand-icon');
+                    if (icon) {
+                        icon.className = 'expand-icon fas fa-expand-alt';
+                        title.title = '点击展开完整标题';
+                    }
+                });
+            }
         });
     </script>
 </body>
